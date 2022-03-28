@@ -4,20 +4,28 @@ import (
 	// "errors"
 	"net/http"
 	"github.com/gin-gonic/gin"
-	// "fmt"
+	"math/rand"
+	"fmt"
+	"strings"
 )
 
 func main() {
 	server := gin.Default()
-	//設定靜態資源的讀取
+	server.GET("/", HelloWorld)
 	server.GET("/create", CreateShortURL)
 	// server.POST("/load", LoginAuth)
 	server.Run(":8888")
 }
 
+func HelloWorld(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Hello World!"})
+	return 
+}
+
 //建立 ShortUrl 資料的 Router
 func CreateShortURL(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{ "status": "create succsss"})
+	fmt.Println(CreateBase62Key(6))
 	return 
 }
 
@@ -56,6 +64,21 @@ func CreateShortURL(c *gin.Context) {
 // }
 
 //以Hash方式產生Key
-func CreateKey() string{
-	return "123"
+func CreateBase62Key(keyLen int) string{
+
+	//Base62字符
+	base62 := "abcdefghijklmnopqrstuvwxyz"+"ABCDEFGHIJKLMNOPQRSTUVWXYZ"+"0123456789"
+
+	//儲存Key的容器
+	var keyBuilder strings.Builder
+	// keyBuilder.Grow(keyLen)
+
+	//迴圈方式產生keyLen個字元的Key
+	for i := 0; i < keyLen; i++{
+		//隨機選擇一個字元並加入
+		base62_index := rand.Intn(len(base62))
+		keyBuilder.WriteByte(base62[base62_index])
+	}
+
+	return keyBuilder.String()
 }
