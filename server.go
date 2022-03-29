@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"database/sql"
+	"time"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -19,6 +20,10 @@ const (
 	SERVER   = "127.0.0.1"
 	PORT     = 3306
 	DATABASE = "dcard-backend-shorturl"
+)
+
+var (
+
 )
 
 //資料庫結構
@@ -52,11 +57,7 @@ func CreateShortURL(c *gin.Context) {
 	conn := fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
 	db, err := sql.Open("mysql", conn)
 	if err != nil {
-		fmt.Println("開啟SQL資料庫連線錯誤：", err)
-		return
-	}
-	if err := db.Ping(); err != nil {
-		fmt.Println("資料庫連線錯誤：", err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
 		return
 	}
 	//離開此函式時，關閉資料庫
@@ -69,33 +70,82 @@ func CreateShortURL(c *gin.Context) {
 	}
 	var query Query_Json
 
-	if err := c.ShouldBindJSON(&quest_json); err != nil {
-		fmt.Println("err:", err)
+	if err := c.ShouldBindJSON(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
+		return
 	}
 
 	
 	//如果傳入資訊缺少originalUrl，回傳錯誤訊息
 	if query.OriginalUrl == "" {
-		c.JSON(http.StatusBadRequest, gin.H{ "status": "undefined originalUrl"}) 
+		c.JSON(http.StatusBadRequest, gin.H{ "error": "undefined originalUrl"}) 
+		return
 	}
 
 
 	//檢查此網址是否已經建立，若已建立則回傳該Key，並重置過期時間
-	row := db.QueryRow("select * from datas where original_url=?", query.originalUrl)
-	if err := row.Scan(); err != nil {c.JSON(http.StatusBadRequest, gin.H{ "status": err})}
+	var exist_data Data
+	row := db.QueryRow("SELECT * FROM datas WHERE original_url=?", query.OriginalUrl)
+	err = row.Scan(&exist_data.originalUrl, &exist_data.shortUrl_key, &exist_data.create_date, &exist_data.expire_date, &exist_data.call_time); 
+	//如果此網址已在資料庫中
+	if err != sql.ErrNoRows {
 		
+		todayStr := time.Now().Format("2006-01-02")
+		expiredateStr := time.Now().AddDate(3, 0, 0).Format("2006-01-02") //增加三年
 
-	//產生新的Key並檢查是否用過
+		//更新設定日期及期限
+		_, err := db.Exec("UPDATE datas SET create_date = ?, expire_date = ? WHERE shortUrl_key = ?", todayStr, expiredateStr, exist_data.shortUrl_key)
 
+		if err != nil{
+			c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
+			return
+		}else{
+			c.JSON(http.StatusOK, gin.H{ 
+				"message": "short url created successfully",
+				"shortURL": c.Request.Host + "/load/" + exist_data.shortUrl_key,
+				"expire_date": expiredateStr,
+			});
+			return
+		}
 
-	
-	// fmt.Println()
-	
-	
+	//如果是尚未登陸的網址
+	}else{
 
-	
+		var newKey string
 
-	return 
+		//在GO裡面沒有While迴圈概念，只能用for執行
+		for{
+			//產生新的Key
+			newKey = CreateBase62Key(6)
+			//檢查是否使用過
+			err := db.QueryRow("SELECT * FROM datas WHERE shortUrl_key=?", newKey).Scan()
+			//如果找不到Row代表沒用過，跳脫For迴圈
+			if err == sql.ErrNoRows{
+				break;
+			}
+		}
+		
+		_, err := db.Exec(
+			"INSERT INTO datas (original_url, shortUrl_key, create_date, expire_date, call_time) VALUES (?, ?, ?, ?, ?)",
+			query.OriginalUrl,
+			newKey,
+			time.Now().Format("2006-01-02"),
+			time.Now().AddDate(3, 0, 0).Format("2006-01-02"),
+			0,
+		)
+
+		if err != nil{
+			c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
+			return
+		}else{
+			c.JSON(http.StatusOK, gin.H{ 
+				"message": "short url created successfully",
+				"shortURL": c.Request.Host + "/load/" + newKey,
+				"expire_date": time.Now().AddDate(3, 0, 0).Format("2006-01-02"),
+			});
+			return
+		}
+	}
 }
 
 // func LoginAuth(c *gin.Context) {
