@@ -125,12 +125,15 @@ func CreateShortURL(c *gin.Context) {
 			}
 		}
 		
+		todayStr := time.Now().Format("2006-01-02")
+		expiredateStr := time.Now().AddDate(3, 0, 0).Format("2006-01-02") //增加三年
+
 		_, err := db.Exec(
 			"INSERT INTO datas (original_url, shortUrl_key, create_date, expire_date, call_time) VALUES (?, ?, ?, ?, ?)",
 			query.OriginalUrl,
 			newKey,
-			time.Now().Format("2006-01-02"),
-			time.Now().AddDate(3, 0, 0).Format("2006-01-02"),
+			todayStr,
+			expiredateStr,
 			0,
 		)
 
@@ -141,7 +144,7 @@ func CreateShortURL(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{ 
 				"message": "short url created successfully",
 				"shortURL": c.Request.Host + "/load/" + newKey,
-				"expire_date": time.Now().AddDate(3, 0, 0).Format("2006-01-02"),
+				"expire_date": expiredateStr,
 			});
 			return
 		}
