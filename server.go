@@ -7,13 +7,36 @@ import (
 	"math/rand"
 	"fmt"
 	"strings"
+	"database/sql"
+	_ "github.com/go-sql-driver/mysql"
 )
 
+//資料庫連線資料
+const (
+	USERNAME = "Remon"
+	PASSWORD = "andy0709"
+	NETWORK  = "tcp"
+	SERVER   = "127.0.0.1"
+	PORT     = 3306
+	DATABASE = "dcard-backend-shorturl"
+)
+
+//資料庫結構
+type Data struct {
+	originalUrl string
+	shortUrl_key string
+	create_date string
+	expire_date string
+	call_time int
+}
+
 func main() {
+
+	//建立Web API Server
 	server := gin.Default()
 	server.GET("/", HelloWorld)
-	server.GET("/create", CreateShortURL)
-	// server.POST("/load", LoginAuth)
+	server.POST("/create", CreateShortURL)
+	//server.POST("/load", LoginAuth)
 	server.Run(":8888")
 }
 
@@ -24,8 +47,54 @@ func HelloWorld(c *gin.Context) {
 
 //建立 ShortUrl 資料的 Router
 func CreateShortURL(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{ "status": "create succsss"})
-	fmt.Println(CreateBase62Key(6))
+
+	//建立資料庫連線
+	conn := fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
+	db, err := sql.Open("mysql", conn)
+	if err != nil {
+		fmt.Println("開啟SQL資料庫連線錯誤：", err)
+		return
+	}
+	if err := db.Ping(); err != nil {
+		fmt.Println("資料庫連線錯誤：", err.Error())
+		return
+	}
+	//離開此函式時，關閉資料庫
+	defer db.Close()
+	
+
+	//取得前端傳來的資訊
+	type Query_Json struct {
+		OriginalUrl string `json:"originalUrl"`
+	}
+	var query Query_Json
+
+	if err := c.ShouldBindJSON(&quest_json); err != nil {
+		fmt.Println("err:", err)
+	}
+
+	
+	//如果傳入資訊缺少originalUrl，回傳錯誤訊息
+	if query.OriginalUrl == "" {
+		c.JSON(http.StatusBadRequest, gin.H{ "status": "undefined originalUrl"}) 
+	}
+
+
+	//檢查此網址是否已經建立，若已建立則回傳該Key，並重置過期時間
+	row := db.QueryRow("select * from datas where original_url=?", query.originalUrl)
+	if err := row.Scan(); err != nil {c.JSON(http.StatusBadRequest, gin.H{ "status": err})}
+		
+
+	//產生新的Key並檢查是否用過
+
+
+	
+	// fmt.Println()
+	
+	
+
+	
+
 	return 
 }
 
