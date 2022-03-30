@@ -22,10 +22,6 @@ const (
 	DATABASE = "dcard-backend-shorturl"
 )
 
-var (
-
-)
-
 //資料庫結構
 type Data struct {
 	originalUrl string
@@ -41,7 +37,7 @@ func main() {
 	server := gin.Default()
 	server.GET("/", HelloWorld)
 	server.POST("/create", CreateShortURL)
-	//server.POST("/load", LoginAuth)
+	server.GET("/load/:key", LoadShortURL)
 	server.Run(":8888")
 }
 
@@ -63,7 +59,6 @@ func CreateShortURL(c *gin.Context) {
 	//離開此函式時，關閉資料庫
 	defer db.Close()
 	
-
 	//取得前端傳來的資訊
 	type Query_Json struct {
 		OriginalUrl string `json:"originalUrl"`
@@ -75,13 +70,11 @@ func CreateShortURL(c *gin.Context) {
 		return
 	}
 
-	
 	//如果傳入資訊缺少originalUrl，回傳錯誤訊息
 	if query.OriginalUrl == "" {
-		c.JSON(http.StatusBadRequest, gin.H{ "error": "undefined originalUrl"}) 
+		c.JSON(http.StatusBadRequest, gin.H{"error": "undefined originalUrl"}) 
 		return
 	}
-
 
 	//檢查此網址是否已經建立，若已建立則回傳該Key，並重置過期時間
 	var exist_data Data
@@ -128,6 +121,7 @@ func CreateShortURL(c *gin.Context) {
 		todayStr := time.Now().Format("2006-01-02")
 		expiredateStr := time.Now().AddDate(3, 0, 0).Format("2006-01-02") //增加三年
 
+		//插入新資料
 		_, err := db.Exec(
 			"INSERT INTO datas (original_url, shortUrl_key, create_date, expire_date, call_time) VALUES (?, ?, ?, ?, ?)",
 			query.OriginalUrl,
@@ -151,41 +145,48 @@ func CreateShortURL(c *gin.Context) {
 	}
 }
 
-// func LoginAuth(c *gin.Context) {
-// 	var (
-// 		username string
-// 		password string
-// 	)
-// 	if in, isExist := c.GetPostForm("username"); isExist && in != "" {
-// 		username = in
-// 	} else {
-// 		c.HTML(http.StatusBadRequest, "login.html", gin.H{
-// 			"error": errors.New("必須輸入使用者名稱"),
-// 		})
-// 		return
-// 	}
-// 	if in, isExist := c.GetPostForm("password"); isExist && in != "" {
-// 		password = in
-// 	} else {
-// 		c.HTML(http.StatusBadRequest, "login.html", gin.H{
-// 			"error": errors.New("必須輸入密碼名稱"),
-// 		})
-// 		return
-// 	}
-// 	if err := Auth(username, password); err == nil {
-// 		c.HTML(http.StatusOK, "login.html", gin.H{
-// 			"success": "登入成功",
-// 		})
-// 		return
-// 	} else {
-// 		c.HTML(http.StatusUnauthorized, "login.html", gin.H{
-// 			"error": err,
-// 		})
-// 		return
-// 	}
-// }
+//呼叫短連結
+func LoadShortURL(c *gin.Context) {
 
-//以Hash方式產生Key
+	//建立資料庫連線
+	conn := fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
+	db, err := sql.Open("mysql", conn)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
+		return
+	}
+	//離開此函式時，關閉資料庫
+	defer db.Close()
+
+	//取得URL中的Key
+	key := c.Param("key")
+
+	var exist_data Data
+
+	row := db.QueryRow("SELECT * FROM datas WHERE shortUrl_key	=?", key)
+	err = row.Scan(&exist_data.originalUrl, &exist_data.shortUrl_key, &exist_data.create_date, &exist_data.expire_date, &exist_data.call_time); 
+	//如果找不到Row
+	if err == sql.ErrNoRows{
+		c.JSON(http.StatusBadRequest, gin.H{ "error": "undefined shortURL"}) 
+		return
+	//找到對應資料
+	}else{
+
+		//該ShortURL 呼叫次數加一
+		_, err := db.Exec("UPDATE datas SET call_time = ? WHERE shortUrl_key = ?", exist_data.call_time + 1, key)
+		if err != nil{
+			c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
+			return
+		}
+
+		//重新導向至原連結
+		c.Redirect(http.StatusMovedPermanently, exist_data.originalUrl)
+		return
+	}
+}
+
+
+//以隨機方式產生Base62的Key
 func CreateBase62Key(keyLen int) string{
 
 	//Base62字符
