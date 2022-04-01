@@ -1,6 +1,3 @@
 build:
-  language:
-    - go
-
-run:
-  web: golang-heroku-gingonic-template
+  docker:
+    web: Dockerfile
