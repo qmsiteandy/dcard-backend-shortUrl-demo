@@ -172,11 +172,13 @@ func LoadShortURL(c *gin.Context) {
 
 	db, err = sql.Open("sqlserver", connString)
 	if err != nil {
+		fmt.Println(err.Error())
 		log.Fatal("Error creating connection pool: ", err.Error())
 	}
 	ctx := context.Background()
 	err = db.PingContext(ctx)
 	if err != nil {
+		fmt.Println(err.Error())
 		log.Fatal(err.Error())
 	}
 	fmt.Printf("Connected!")
