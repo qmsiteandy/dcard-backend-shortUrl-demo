@@ -4,6 +4,10 @@ RUN go version
 ADD . /go/src/app
 WORKDIR /go/src/app
 
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
 # Expose 8080
 # Gin will use the PORT env var
 ENV PORT 8080
