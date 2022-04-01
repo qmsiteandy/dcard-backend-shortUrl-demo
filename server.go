@@ -6,24 +6,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"math/rand"
 	"fmt"
+	"context"
+	"log"
 	"strings"
 	"database/sql"
 	"time"
+	"os"
 	_ "github.com/go-sql-driver/mysql"
-)
-
-//資料庫連線資料
-const (
-	USERNAME = "Remon"
-	PASSWORD = "andy0709"
-	NETWORK  = "tcp"
-	SERVER   = "127.0.0.1"
-	PORT     = 3306
-	DATABASE = "dcard-backend-shorturl"
-)
-
-var (
-
+	_ "github.com/denisenkom/go-mssqldb"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 //資料庫結構
@@ -35,13 +26,21 @@ type Data struct {
 	call_time int
 }
 
-func main() {
+//讀取環境變數
+var	(
+	SERVER = os.Getenv("SERVER")
+	PORT = os.Getenv("PORT")
+	USERNAME = os.Getenv("USERNAME")
+	PASSWORD = os.Getenv("PASSWORD")
+	DATABASE = os.Getenv("DATABASE")
+)
 
+func main() {
 	//建立Web API Server
 	server := gin.Default()
 	server.GET("/", HelloWorld)
 	server.POST("/create", CreateShortURL)
-	//server.POST("/load", LoginAuth)
+	server.GET("/load/:key", LoadShortURL)
 	server.Run(":8888")
 }
 
@@ -53,16 +52,25 @@ func HelloWorld(c *gin.Context) {
 //建立 ShortUrl 資料的 Router
 func CreateShortURL(c *gin.Context) {
 
-	//建立資料庫連線
-	conn := fmt.Sprintf("%s:%s@%s(%s:%d)/%s", USERNAME, PASSWORD, NETWORK, SERVER, PORT, DATABASE)
-	db, err := sql.Open("mysql", conn)
+	// 與 Azure Database Server 連線
+	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;", SERVER, USERNAME, PASSWORD, PORT, DATABASE)
+
+	var db *sql.DB
+	var err error
+	// Create connection pool
+	db, err = sql.Open("sqlserver", connString)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
-		return
+		fmt.Printf(err.Error())
+		log.Fatal("Error creating connection pool: ", err.Error())
 	}
-	//離開此函式時，關閉資料庫
+	ctx := context.Background()
+	err = db.PingContext(ctx)
+	if err != nil {
+		fmt.Printf(err.Error())
+		log.Fatal(err.Error())
+	}
+	fmt.Println("Connected!")
 	defer db.Close()
-	
 
 	//取得前端傳來的資訊
 	type Query_Json struct {
@@ -75,18 +83,17 @@ func CreateShortURL(c *gin.Context) {
 		return
 	}
 
-	
 	//如果傳入資訊缺少originalUrl，回傳錯誤訊息
 	if query.OriginalUrl == "" {
-		c.JSON(http.StatusBadRequest, gin.H{ "error": "undefined originalUrl"}) 
+		c.JSON(http.StatusBadRequest, gin.H{"error": "undefined originalUrl"}) 
 		return
 	}
 
-
 	//檢查此網址是否已經建立，若已建立則回傳該Key，並重置過期時間
 	var exist_data Data
-	row := db.QueryRow("SELECT * FROM datas WHERE original_url=?", query.OriginalUrl)
+	row := db.QueryRow("SELECT * FROM DemoTable WHERE original_url = @url", sql.Named("url", query.OriginalUrl))
 	err = row.Scan(&exist_data.originalUrl, &exist_data.shortUrl_key, &exist_data.create_date, &exist_data.expire_date, &exist_data.call_time); 
+
 	//如果此網址已在資料庫中
 	if err != sql.ErrNoRows {
 		
@@ -94,11 +101,13 @@ func CreateShortURL(c *gin.Context) {
 		expiredateStr := time.Now().AddDate(3, 0, 0).Format("2006-01-02") //增加三年
 
 		//更新設定日期及期限
-		_, err := db.Exec("UPDATE datas SET create_date = ?, expire_date = ? WHERE shortUrl_key = ?", todayStr, expiredateStr, exist_data.shortUrl_key)
+		_, err := db.Exec("UPDATE DemoTable SET create_date = @createDate, expire_date = @expireDate WHERE shortUrl_key = @key", 
+			sql.Named("createDate", todayStr), sql.Named("expireDate", expiredateStr),sql.Named("key", exist_data.shortUrl_key))
 
 		if err != nil{
 			c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
 			return
+
 		}else{
 			c.JSON(http.StatusOK, gin.H{ 
 				"message": "short url created successfully",
@@ -118,7 +127,7 @@ func CreateShortURL(c *gin.Context) {
 			//產生新的Key
 			newKey = CreateBase62Key(6)
 			//檢查是否使用過
-			err := db.QueryRow("SELECT * FROM datas WHERE shortUrl_key=?", newKey).Scan()
+			err := db.QueryRow("SELECT * FROM DemoTable WHERE shortUrl_key = @key", sql.Named("key", newKey)).Scan()
 			//如果找不到Row代表沒用過，跳脫For迴圈
 			if err == sql.ErrNoRows{
 				break;
@@ -128,13 +137,14 @@ func CreateShortURL(c *gin.Context) {
 		todayStr := time.Now().Format("2006-01-02")
 		expiredateStr := time.Now().AddDate(3, 0, 0).Format("2006-01-02") //增加三年
 
+		//插入新資料
 		_, err := db.Exec(
-			"INSERT INTO datas (original_url, shortUrl_key, create_date, expire_date, call_time) VALUES (?, ?, ?, ?, ?)",
-			query.OriginalUrl,
-			newKey,
-			todayStr,
-			expiredateStr,
-			0,
+			"INSERT INTO DemoTable (original_url, shortUrl_key, create_date, expire_date, call_time) VALUES (@url, @key, @createDate, @expireDate, @callTime)",
+			sql.Named("url", query.OriginalUrl),
+			sql.Named("key", newKey),
+			sql.Named("createDate", todayStr),
+			sql.Named("expireDate", expiredateStr),
+			sql.Named("callTime", 0),
 		)
 
 		if err != nil{
@@ -151,41 +161,58 @@ func CreateShortURL(c *gin.Context) {
 	}
 }
 
-// func LoginAuth(c *gin.Context) {
-// 	var (
-// 		username string
-// 		password string
-// 	)
-// 	if in, isExist := c.GetPostForm("username"); isExist && in != "" {
-// 		username = in
-// 	} else {
-// 		c.HTML(http.StatusBadRequest, "login.html", gin.H{
-// 			"error": errors.New("必須輸入使用者名稱"),
-// 		})
-// 		return
-// 	}
-// 	if in, isExist := c.GetPostForm("password"); isExist && in != "" {
-// 		password = in
-// 	} else {
-// 		c.HTML(http.StatusBadRequest, "login.html", gin.H{
-// 			"error": errors.New("必須輸入密碼名稱"),
-// 		})
-// 		return
-// 	}
-// 	if err := Auth(username, password); err == nil {
-// 		c.HTML(http.StatusOK, "login.html", gin.H{
-// 			"success": "登入成功",
-// 		})
-// 		return
-// 	} else {
-// 		c.HTML(http.StatusUnauthorized, "login.html", gin.H{
-// 			"error": err,
-// 		})
-// 		return
-// 	}
-// }
+//呼叫短連結
+func LoadShortURL(c *gin.Context) {
 
-//以Hash方式產生Key
+	// 與 Azure Database Server 連線
+	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;", SERVER, USERNAME, PASSWORD, PORT, DATABASE)
+	var db *sql.DB
+	var err error
+
+	db, err = sql.Open("sqlserver", connString)
+	if err != nil {
+		log.Fatal("Error creating connection pool: ", err.Error())
+	}
+	ctx := context.Background()
+	err = db.PingContext(ctx)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	fmt.Printf("Connected!")
+	defer db.Close()
+
+	//取得URL中的Key
+	key := c.Param("key")
+
+	var exist_data Data
+	fmt.Println(exist_data)
+	row := db.QueryRow("SELECT * FROM DemoTable WHERE shortUrl_key	=@key", sql.Named("key", key))
+	err = row.Scan(&exist_data.originalUrl, &exist_data.shortUrl_key, &exist_data.create_date, &exist_data.expire_date, &exist_data.call_time); 
+	//如果找不到Row
+	if err == sql.ErrNoRows{
+		c.JSON(http.StatusBadRequest, gin.H{ "error": "undefined shortURL"}) 
+		return
+
+	//找到對應資料
+	}else{
+		//該ShortURL 呼叫次數加一
+		_, err := db.Exec("UPDATE DemoTable SET call_time = @callTime WHERE shortUrl_key = @key", 
+			sql.Named("callTime", exist_data.call_time + 1),
+			sql.Named("key", key))
+
+		if err != nil{
+			c.JSON(http.StatusBadRequest, gin.H{ "error": err.Error()}) 
+			return
+		}
+
+		//重新導向至原連結
+		c.Redirect(http.StatusMovedPermanently, exist_data.originalUrl)
+		return
+	}
+}
+
+
+//以隨機方式產生Base62的Key
 func CreateBase62Key(keyLen int) string{
 
 	//Base62字符
