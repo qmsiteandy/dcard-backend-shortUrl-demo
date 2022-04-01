@@ -42,7 +42,7 @@ func main() {
 	server.GET("/", HelloWorld)
 	server.POST("/create", CreateShortURL)
 	server.GET("/load/:key", LoadShortURL)
-	server.Run(":8080")
+	server.Run()
 }
 
 func HelloWorld(c *gin.Context) {
