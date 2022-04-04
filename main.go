@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -88,7 +89,14 @@ func CreateShortURL(c *gin.Context) {
 
 	//如果傳入資訊缺少originalUrl，回傳錯誤訊息
 	if query.OriginalUrl == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "undefined originalUrl"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "originalUrl can't be empty"})
+		return
+	}
+
+	//確認是否為可用的URL
+	_, err = url.ParseRequestURI(query.OriginalUrl)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This originalUrl is invalid."})
 		return
 	}
 
