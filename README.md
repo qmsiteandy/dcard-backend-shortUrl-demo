@@ -30,7 +30,14 @@ Response:
     "shortURL": "decard-backend-shorturl-demo.herokuapp.com/load/LnfgDs"
 }
 ```
-<font color="red"> 如果不是網址? </font>
+如果沒輸入網址
+```
+{"error": "originalUrl can't be empty"}
+```
+如果輸入的不是網址
+```
+{"error": "This originalUrl is invalid."}
+```
 
 ## 呼叫短網址
 Request:
@@ -204,7 +211,14 @@ func CreateBase62Key(keyLen int) string {
 }
 ```
 
-<font color="red"> 這邊說明辨別網址的套件 </font>
+另外我做了一個機制，用來確認使用者輸入的是可用的網址。使用到 net/url 套件，它會對網址進行呼叫測試，若為不可用網址則回傳錯誤。
+```
+_, err = url.ParseRequestURI(query.OriginalUrl)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This originalUrl is invalid."})
+		return
+	}
+```
 
 ### 6-4：開發過程的困擾
 比較讓我困擾的是學習完全沒用過的新語言，對於一些語法的熟悉度還是不夠，邊寫邊踩了很多坑，像是使用go get指令卻無法下載我要的library、SQL回傳的資料得宣告一個type變數儲存、或是vscode會自動刪除沒使用的import使得我後來忘記套件名稱等。
