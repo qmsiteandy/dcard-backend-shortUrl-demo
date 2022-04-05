@@ -30,20 +30,24 @@ type Data struct {
 
 //讀取環境變數
 var (
-	SERVER   = os.Getenv("SERVER")
-	PORT     = os.Getenv("PORT")
-	USERNAME = os.Getenv("USERNAME")
-	PASSWORD = os.Getenv("PASSWORD")
-	DATABASE = os.Getenv("DATABASE")
+	AZURE_SQL_SERVER = os.Getenv("AZURE_SQL_SERVER")
+	AZURE_SQL_PORT   = os.Getenv("AZURE_SQL_PORT")
+	AZURE_USERNAME   = os.Getenv("AZURE_USERNAME")
+	AZURE_PASSWORD   = os.Getenv("AZURE_PASSWORD")
+	AZURE_SQL_DB     = os.Getenv("AZURE_SQL_DB")
 )
 
 func main() {
-	//建立Web API Server
+	server := SetupServer()
+	server.Run()
+}
+
+func SetupServer() *gin.Engine {
 	server := gin.Default()
 	server.GET("/", HelloWorld)
 	server.POST("/create", CreateShortURL)
 	server.GET("/load/:key", LoadShortURL)
-	server.Run()
+	return server
 }
 
 func HelloWorld(c *gin.Context) {
@@ -55,21 +59,23 @@ func HelloWorld(c *gin.Context) {
 func CreateShortURL(c *gin.Context) {
 
 	// 與 Azure Database Server 連線
-	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;", SERVER, USERNAME, PASSWORD, PORT, DATABASE)
+	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;", AZURE_SQL_SERVER, AZURE_USERNAME, AZURE_PASSWORD, AZURE_SQL_PORT, AZURE_SQL_DB)
 
 	var db *sql.DB
 	var err error
 	// Create connection pool
 	db, err = sql.Open("sqlserver", connString)
 	if err != nil {
-		fmt.Printf(err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		log.Fatal("Error creating connection pool: ", err.Error())
+		return
 	}
 	ctx := context.Background()
 	err = db.PingContext(ctx)
 	if err != nil {
-		fmt.Printf(err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		log.Fatal(err.Error())
+		return
 	}
 	fmt.Println("Connected!")
 	defer db.Close()
@@ -174,7 +180,7 @@ func CreateShortURL(c *gin.Context) {
 func LoadShortURL(c *gin.Context) {
 
 	// 與 Azure Database Server 連線
-	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;", SERVER, USERNAME, PASSWORD, PORT, DATABASE)
+	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;", AZURE_SQL_SERVER, AZURE_USERNAME, AZURE_PASSWORD, AZURE_SQL_PORT, AZURE_SQL_DB)
 	var db *sql.DB
 	var err error
 
