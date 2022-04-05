@@ -38,12 +38,16 @@ var (
 )
 
 func main() {
-	//建立Web API Server
+	server := SetupServer()
+	server.Run()
+}
+
+func SetupServer() *gin.Engine {
 	server := gin.Default()
 	server.GET("/", HelloWorld)
 	server.POST("/create", CreateShortURL)
 	server.GET("/load/:key", LoadShortURL)
-	server.Run()
+	return server
 }
 
 func HelloWorld(c *gin.Context) {
