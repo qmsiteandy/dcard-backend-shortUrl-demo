@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//測試伺服器開啟，嘗試呼叫IndexRouter
+//測試伺服器開啟，取得 Hello World
 func Test_ServerIndexRouter(t *testing.T) {
 	server := SetupServer()
 
@@ -24,7 +24,7 @@ func Test_ServerIndexRouter(t *testing.T) {
 	assert.Contains(t, w.Body.String(), expectedContent)
 }
 
-//測試新增短網址
+//測試新增短網址，成功
 func Test_CreateShortURL_Success(t *testing.T) {
 	server := SetupServer()
 
@@ -60,7 +60,7 @@ func Test_CreateShortURL_EmptyUrl(t *testing.T) {
 	assert.Contains(t, w.Body.String(), expectedContent)
 }
 
-//測試新增短網址，但內容為空白
+//測試新增短網址，但內容非有效網址
 func Test_CreateShortURL_InvalidUrl(t *testing.T) {
 	server := SetupServer()
 
